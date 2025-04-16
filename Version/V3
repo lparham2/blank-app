@@ -1,0 +1,125 @@
+# Version 3
+
+import streamlit as st
+from openai import OpenAI
+import os
+import json
+
+# ---- Insert your OpenAI API key ----
+openai_api_key = "INSERT API KEY HERE"  
+
+# ---- Initialize OpenAI Client ----
+client = OpenAI(api_key=openai_api_key)
+
+# ---- App Config ----
+st.set_page_config(page_title="Acadyra", layout="centered")
+st.title("Acadyra")
+st.write("The era of academia integrated with Generative AI.")
+
+# ---- Sidebar Navigation ----
+page = st.sidebar.selectbox("Choose a feature", [
+    "Generate Quiz",
+    "Take Quiz",
+    "Auto-Grading",
+    "Performance Summary"
+])
+
+# ---- OpenAI Quiz Generator (MCQ) ----
+def generate_quiz_with_openai(topic):
+    prompt = (
+        f"Create 3 multiple-choice quiz questions on the topic of '{topic}'. "
+        "Each question should have 4 options: one correct and three plausible distractors. "
+        "Respond in JSON format as a list like this:\n\n"
+        "[\n"
+        "  {\n"
+        "    'question': 'What is...',\n"
+        "    'options': ['A', 'B', 'C', 'D'],\n"
+        "    'answer': 'A'\n"
+        "  }\n"
+        "]\n"
+        "Do not include explanations or extra text."
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=500
+        )
+
+        content = response.choices[0].message.content
+        questions = json.loads(content.replace("'", '"'))
+        return questions
+    except Exception as e:
+        st.error("Error generating or parsing quiz from OpenAI.")
+        st.code(str(e))
+        return []
+
+# ---- Session State ----
+if "quiz" not in st.session_state:
+    st.session_state.quiz = []
+
+if "student_answers" not in st.session_state:
+    st.session_state.student_answers = []
+
+# ---- Page 1: Generate Quiz ----
+if page == "Generate Quiz":
+    topic = st.text_input("Enter a topic for the quiz")
+    if st.button("Generate with AI"):
+        quiz_data = generate_quiz_with_openai(topic)
+        if quiz_data:
+            st.session_state.quiz = quiz_data
+            st.success("Quiz generated!")
+
+    for i, q in enumerate(st.session_state.quiz):
+        st.write(f"**Q{i+1}: {q['question']}**")
+        for opt in q['options']:
+            st.write(f"- {opt}")
+
+# ---- Page 2: Take Quiz ----
+elif page == "Take Quiz":
+    if not st.session_state.quiz:
+        st.warning("Please generate a quiz first.")
+    else:
+        st.write("### Choose the best answer:")
+        selected_answers = []
+        for i, q in enumerate(st.session_state.quiz):
+            st.write(f"**Q{i+1}: {q['question']}**")
+            selected = st.radio(
+                label="",
+                options=q['options'],
+                key=f"question_{i}"
+            )
+            selected_answers.append(selected)
+
+        if st.button("Submit Answers"):
+            st.session_state.student_answers = selected_answers
+            st.success("Answers submitted!")
+
+# ---- Page 3: Auto-Grading ----
+elif page == "Auto-Grading":
+    if not st.session_state.student_answers:
+        st.warning("No answers submitted yet.")
+    else:
+        st.write("### Grading Results:")
+        correct = 0
+        for i, (q, a) in enumerate(zip(st.session_state.quiz, st.session_state.student_answers)):
+            is_correct = a == q['answer']
+            st.write(f"Q{i+1}: {'✅ Correct' if is_correct else '❌ Incorrect'} — You answered: {a}")
+            if is_correct:
+                correct += 1
+
+        st.metric("Score", f"{correct}/{len(st.session_state.quiz)} correct")
+
+# ---- Page 4: Performance Summary ----
+elif page == "Performance Summary":
+    if not st.session_state.student_answers:
+        st.warning("No quiz data to summarize.")
+    else:
+        total = len(st.session_state.quiz)
+        correct = sum(
+            1 for q, a in zip(st.session_state.quiz, st.session_state.student_answers) if a == q['answer']
+        )
+        st.write("### Overall Performance")
+        st.metric("Accuracy", f"{correct}/{total} correct")
