@@ -1,0 +1,7 @@
+# Version 1
+import streamlit as st
+
+st.title("Acadyra")
+st.write(
+    "The era of academia integrated with Generative AI."
+)
