@@ -1,0 +1,75 @@
+# Version 2
+
+import streamlit as st
+import openai
+import random
+
+
+st.set_page_config(page_title="Acadyra", layout="centered")
+
+st.title("Acadyra")
+st.write("Where academia meets the era of Generative AI.")
+
+# Sidebar Navigation
+page = st.sidebar.selectbox("Choose a feature", [
+    "Generate Quiz",
+    "Take Quiz",
+    "Auto-Grading",
+    "Performance Summary"
+])
+
+# Mock LLM-based Quiz Generator
+def generate_quiz(topic):
+    return [
+        {"question": f"What is a key concept in {topic}?", "answer": "This is a sample answer."},
+        {"question": f"Explain one benefit of studying {topic}.", "answer": "This is another sample answer."}
+    ]
+
+# State placeholder for quizzes
+if "quiz" not in st.session_state:
+    st.session_state.quiz = []
+
+# Page 1: Generate Quiz
+if page == "Generate Quiz":
+    topic = st.text_input("Enter a topic for the quiz")
+    if st.button("Generate"):
+        st.session_state.quiz = generate_quiz(topic)
+        st.success("Quiz generated!")
+
+    for i, q in enumerate(st.session_state.quiz):
+        st.write(f"Q{i+1}: {q['question']}")
+
+# Page 2: Take Quiz
+elif page == "Take Quiz":
+    if not st.session_state.quiz:
+        st.warning("Please generate a quiz first.")
+    else:
+        st.write("### Answer the following questions:")
+        student_answers = []
+        for i, q in enumerate(st.session_state.quiz):
+            ans = st.text_input(f"Q{i+1}: {q['question']}", key=f"ans_{i}")
+            student_answers.append(ans)
+
+        if st.button("Submit Answers"):
+            st.success("Answers submitted!")
+            st.session_state.student_answers = student_answers
+
+# Page 3: Auto-Grading
+elif page == "Auto-Grading":
+    if "student_answers" not in st.session_state:
+        st.warning("No answers submitted yet.")
+    else:
+        st.write("### Grading Results:")
+        for i, (q, a) in enumerate(zip(st.session_state.quiz, st.session_state.student_answers)):
+            # Mock grading (replace with real AI grading)
+            correct = random.choice([True, False])
+            st.write(f"Q{i+1}: {'✅ Correct' if correct else '❌ Incorrect'}")
+
+# Page 4: Performance Summary
+elif page == "Performance Summary":
+    if "student_answers" not in st.session_state:
+        st.warning("No quiz data to summarize.")
+    else:
+        total = len(st.session_state.quiz)
+        correct = random.randint(0, total)  # Simulate some accuracy
+        st.metric("Accuracy", f"{correct}/{total} correct")
