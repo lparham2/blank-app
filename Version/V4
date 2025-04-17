@@ -1,0 +1,160 @@
+# Version 4
+
+import streamlit as st
+from openai import OpenAI
+import os
+import json
+import random
+
+# ---- Insert your OpenAI API key ----
+openai_api_key = "API KEY HERE"
+client = OpenAI(api_key=openai_api_key)
+
+# ---- App Config ----
+st.set_page_config(page_title="Acadyra", layout="centered")
+st.title("Acadyra")
+st.write("The era of academia integrated with Generative AI.")
+
+# ---- Sidebar Navigation ----
+page = st.sidebar.selectbox("Choose a feature", [
+    "Generate Quiz",
+    "Take Quiz",
+    "Auto-Grading",
+    "Performance Summary"
+])
+
+# ---- Dynamic Quiz Generator ----
+def generate_quiz_with_openai(topic, quiz_type):
+    if quiz_type == "Multiple Choice":
+        prompt = (
+            f"Create 10 multiple-choice quiz questions on the topic '{topic}'. "
+            "Each question should have 4 options: one correct and three plausible distractors. "
+            "Respond in JSON format like:\n\n"
+            "[\n"
+            "  {\n"
+            "    'type': 'mcq',\n"
+            "    'question': 'What is...?',\n"
+            "    'options': ['A', 'B', 'C', 'D'],\n"
+            "    'answer': 'A'\n"
+            "  }, ...\n"
+            "]"
+        )
+    elif quiz_type == "Open Response":
+        prompt = (
+            f"Create 10 open-ended quiz questions on the topic '{topic}'. "
+            "Do not include options, only questions and their correct answers. "
+            "Respond in JSON format like:\n\n"
+            "[\n"
+            "  {\n"
+            "    'type': 'open',\n"
+            "    'question': 'Explain...',\n"
+            "    'answer': 'A correct explanation is...'\n"
+            "  }, ...\n"
+            "]"
+        )
+    else:  # Mixed
+        prompt = (
+            f"Create a mixed quiz with 5 multiple-choice and 5 open-ended questions on the topic '{topic}'. "
+            "Format MCQs like:\n"
+            "{'type': 'mcq', 'question': '...', 'options': ['A', 'B', 'C', 'D'], 'answer': 'B'}\n"
+            "Format open questions like:\n"
+            "{'type': 'open', 'question': '...', 'answer': '...'}\n"
+            "Respond as a JSON list with 10 total questions (5 of each type), in any order."
+        )
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=1000
+        )
+
+        content = response.choices[0].message.content
+        questions = json.loads(content.replace("'", '"'))
+        random.shuffle(questions)  # Shuffle to randomize order
+        return questions
+    except Exception as e:
+        st.error("Error generating or parsing quiz from OpenAI.")
+        st.code(str(e))
+        return []
+
+# ---- Session State ----
+if "quiz" not in st.session_state:
+    st.session_state.quiz = []
+if "student_answers" not in st.session_state:
+    st.session_state.student_answers = []
+if "quiz_type" not in st.session_state:
+    st.session_state.quiz_type = ""
+
+# ---- Page 1: Generate Quiz ----
+if page == "Generate Quiz":
+    topic = st.text_input("Enter quiz topic")
+    quiz_type = st.radio("Select quiz type", ["Multiple Choice", "Open Response", "Mixed"])
+    if st.button("Generate with AI"):
+        quiz = generate_quiz_with_openai(topic, quiz_type)
+        if quiz:
+            st.session_state.quiz = quiz
+            st.session_state.quiz_type = quiz_type
+            st.success("Quiz generated!")
+
+    for i, q in enumerate(st.session_state.quiz):
+        st.write(f"**Q{i+1}: {q['question']}**")
+        if q["type"] == "mcq":
+            for opt in q['options']:
+                st.write(f"- {opt}")
+        else:
+            st.write("Open-ended question.")
+
+# ---- Page 2: Take Quiz ----
+elif page == "Take Quiz":
+    if not st.session_state.quiz:
+        st.warning("Please generate a quiz first.")
+    else:
+        st.write("### Answer the following:")
+        student_answers = []
+        for i, q in enumerate(st.session_state.quiz):
+            st.write(f"**Q{i+1}: {q['question']}**")
+            if q["type"] == "mcq":
+                selected = st.radio("", q["options"], key=f"q_{i}")
+            else:
+                selected = st.text_area("Your response:", key=f"q_{i}")
+            student_answers.append(selected)
+
+        if st.button("Submit Answers"):
+            st.session_state.student_answers = student_answers
+            st.success("Answers submitted!")
+
+# ---- Page 3: Auto-Grading ----
+elif page == "Auto-Grading":
+    if not st.session_state.student_answers:
+        st.warning("No answers submitted yet.")
+    else:
+        st.write("### Grading Results:")
+        correct = 0
+        for i, (q, a) in enumerate(zip(st.session_state.quiz, st.session_state.student_answers)):
+            if q["type"] == "mcq":
+                is_correct = a == q["answer"]
+                st.write(f"Q{i+1}: {'✅ Correct' if is_correct else '❌ Incorrect'} — You answered: {a}")
+                if is_correct:
+                    correct += 1
+            else:
+                st.write(f"Q{i+1}: Your answer: {a}")
+                st.write(f"Suggested answer: {q['answer']}")
+
+        total_mcq = sum(1 for q in st.session_state.quiz if q["type"] == "mcq")
+        if total_mcq > 0:
+            st.metric("MCQ Score", f"{correct} / {total_mcq} correct")
+
+# ---- Page 4: Performance Summary ----
+elif page == "Performance Summary":
+    if not st.session_state.student_answers:
+        st.warning("No quiz data to summarize.")
+    else:
+        total = len(st.session_state.quiz)
+        correct = sum(
+            1 for q, a in zip(st.session_state.quiz, st.session_state.student_answers)
+            if q["type"] == "mcq" and a == q["answer"]
+        )
+        st.write("### Overall Performance")
+        st.metric("MCQ Accuracy", f"{correct}/{total} questions")
